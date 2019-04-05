@@ -1,2 +1,2 @@
 # DLib
-Library for interacting with the displacement database
+Library for interacting with nan-tech's displacement database
