@@ -1,6 +1,5 @@
 import * as firebase from 'firebase/app';
 import 'firebase/firestore';
-import {FirebaseFirestore} from '@firebase/firestore-types';
 
 export const Database = (function(){
 
@@ -13,7 +12,7 @@ export const Database = (function(){
         messagingSenderId: "126845761108"
     };
 
-    let instance: FirebaseFirestore;
+    let instance: firebase.firestore.Firestore;
     function createInstance()
     {
         firebase.initializeApp( FIREBASE_CONFIG );

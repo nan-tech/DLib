@@ -1,3 +1,5 @@
+import { Database } from '../database/instance';
+
 export class Resource
 {
     name: string;
@@ -34,11 +36,12 @@ export class Resource
      *  Retrieves details about this resource from the database
      *  Must be called before any info paragraph, contact info, operating hours, and any other details are accessed
      */
-    public getDetails() {
+    public retrieveDetails() {
         if( this.details !== undefined )
         {
             // TODO: Perhaps this should invoke a warning?
             return;
         }
+        const db = Database.getInstance();
     }
 }
