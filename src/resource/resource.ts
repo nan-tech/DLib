@@ -3,9 +3,9 @@ import { Database } from '../database/instance';
 export class Resource
 {
     name: string;
-    location: object | undefined;
+    location?: object;
     tags: Array<string>;
-    details: object | undefined;
+    details?: object;
 
     /**
      * @param name The name of the resource
@@ -27,9 +27,7 @@ export class Resource
             {
                 // Something has gone wrong. TODO: Handle this error
             }
-            this.location = undefined;
         }
-        this.details = undefined;
     }
 
     /**
