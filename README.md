@@ -5,7 +5,7 @@ Library for interacting with nan-tech's displacement database
 `npm install`
 `npm run-script build`
 
-The gory detaisl of the build script:
+The gory details of the build script:
 1. Build typescript decrelations
 2. Compile typescript with Babel
 3. Browserify babel output
