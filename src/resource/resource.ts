@@ -95,9 +95,9 @@ export class AreaSpecifier {
 /**
  * Gets all the resources in the database without loading their details
  * Will download and cache the resources.
+ * @param areaSpecifier A specifier for the location in which to find resources. If specified, each resource will have a distance property assigned to it's location object.
  * Note: The cache of resources will be specific to the areaSpecifier (or lackthereof)
  * If you wish to retrieve resources for a new area, the cache must be cleared with @function clearResourceCache
- * @param areaSpecifier A specifier for the location in which to find resources.
  * @returns A promise to a resource list
  */
 export function getAllResources( areaSpecifier?: AreaSpecifier ): Promise<ResourceList> {
@@ -166,4 +166,27 @@ export function getAllResources( areaSpecifier?: AreaSpecifier ): Promise<Resour
  */
 export function clearResourceCache() {
     __resourceCache = undefined;
+}
+
+/**
+ * Retrieves a resource by its document id in firestore.
+ * @param id The ID of the resource in the "resource" collection
+ * @returns A promise which will resolve to the resource. If a document with that ID does not exist, the promise will be rejected.
+ */
+export function getResourceByID( id: string ) : Promise<Resource>
+{
+    return Database.getInstance().collection("resource").doc(id)
+           .get().then( (doc: firebase.firestore.DocumentSnapshot) => {
+            return new Promise<Resource>((resolve, reject) => { 
+                let documentData = doc.data();
+                if( documentData === undefined )
+                {
+                    reject();
+                }
+                else
+                {
+                    resolve( new Resource( documentData["name"], [], documentData["details-reference"], documentData["location"] ) );
+                }
+            });
+        });
 }
