@@ -5,10 +5,11 @@
   "scripts": {
     "type-check": "tsc --noEmit",
     "type-check:watch": "npm run type-check -- --watch",
-    "build": "npm run build:types && npm run build:js && npm run build:browserify",
+    "build": "npm run build:types && npm run build:js && npm run build:browserify && npm run build:minify",
     "build:types": "tsc --emitDeclarationOnly",
     "build:js": "babel src --out-dir lib --extensions \".ts,.tsx\" --source-maps inline",
-    "build:browserify": "browserify lib/library/lib.js -o lib/dist.js"
+    "build:browserify": "browserify lib/library/lib.js -o lib/dist.js",
+    "build:minify": "./node_modules/uglify-js/bin/uglifyjs lib/dist.js -o lib/dist.min.js"
   },
   "repository": {
     "type": "git",
@@ -30,7 +31,8 @@
     "@babel/preset-env": "^7.4.3",
     "@babel/preset-typescript": "^7.3.3",
     "browserify": "^16.2.3",
-    "typescript": "^3.4.1"
+    "typescript": "^3.4.1",
+    "uglify-js": "^3.5.3"
   },
   "dependencies": {
     "@types/geodesy": "^1.2.1",
