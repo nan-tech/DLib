@@ -10,3 +10,4 @@ The gory details of the build script:
 2. Compile typescript with Babel
 3. Browserify babel output
 4. Bundle the library into a single .js file 'dist.js' in the directory 'lib'
+5. Minify dist.js into dist.min.js
