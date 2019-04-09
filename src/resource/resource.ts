@@ -1,21 +1,25 @@
 import { Database } from '../database/instance';
+import LatLon from 'geodesy'
 
 export class Resource
 {
     name: string;
     location?: object;
     tags: Array<string>;
-    details?: object;
+    private __details?: firebase.firestore.DocumentData;
+    private __detailsRef: firebase.firestore.DocumentReference;
 
     /**
      * @param name The name of the resource
-     * @param location An object containing the geopoint (coordinates) and address of a resource
+     * @param location An object containing the geopoint (coordinates) and address of a resource.
+     *                 Some methods will augment a resources location attribute, adding a distance parameter.
      * @param tags A list of the resources 'tags' used to descrive the goods and/or services this resource offers
      */
-    constructor( name: string, tags: Array<string>, location?: object )
+    constructor( name: string, tags: Array<string>, detailsRef: firebase.firestore.DocumentReference, location?: object )
     {
         this.name = name;
         this.tags = tags;
+        this.__detailsRef = detailsRef;
 
         if( !location || location.hasOwnProperty("geopoint") || location.hasOwnProperty("address") )
         {
@@ -31,16 +35,29 @@ export class Resource
     }
 
     /**
-     *  Retrieves details about this resource from the database
-     *  Must be called before any info paragraph, contact info, operating hours, and any other details are accessed
+     *  Retrieves details about this resource.
+     *  Returns an object with info paragraph, contact info, operating hours, and any other details.
      */
-    public retrieveDetails() {
-        if( this.details !== undefined )
+    public details(): Promise<firebase.firestore.DocumentData | undefined> {
+        if( this.__details !== undefined )
         {
-            // TODO: Perhaps this should invoke a warning?
-            return;
+            return new Promise( (resolve) => { resolve(this.__details) } );
         }
-        const db = Database.getInstance();
+        return this.__detailsRef.get().then( (detailsSnapshot: firebase.firestore.DocumentSnapshot) => {
+            this.__details = detailsSnapshot.data();
+            if( this.__details === undefined || this.__details.exists === false )
+            {
+                throw new Error("Details reference was invalid");
+            }
+            return this.__details;
+        });
+    }
+
+    /**
+     *  Deletes the details contained in this resource. Ensures that retrieveDetails gets fresh data.
+     */
+    public clearDetailsCache() {
+        this.__details = undefined;
     }
 }
 
@@ -51,23 +68,93 @@ type ResourceList = {
 
 let __resourceCache: ResourceList = undefined;
 
+// Type to define an area to search within
+export class AreaSpecifier {
+    latitude: number;
+    longitude: number;
+    distance: number;
+    /**
+     * @param latitude the horizontal center line of the area
+     * @param longitude the vertical cetner line of the area
+     * @param distance A maximum distance from the point implied by latitude and longitude in METERS. 
+     *                 Not Metres you colonizers! 
+     */
+    constructor( latitude: number, longitude: number, distance: number )
+    {
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.distance = distance;
+    }
+
+    static fromGeopoint( location: firebase.firestore.GeoPoint, distance: number )
+    {
+        return new this( location.latitude, location.longitude, distance );
+    }
+}
+
 /**
  * Gets all the resources in the database without loading their details
  * Will download and cache the resources.
+ * Note: The cache of resources will be specific to the areaSpecifier (or lackthereof)
+ * If you wish to retrieve resources for a new area, the cache must be cleared with @function clearResourceCache
+ * @param areaSpecifier A specifier for the location in which to find resources.
  * @returns A promise to a resource list
  */
-export function getAllResources(): Promise<ResourceList> {
+export function getAllResources( areaSpecifier?: AreaSpecifier ): Promise<ResourceList> {
     if( __resourceCache === undefined )
     {
         __resourceCache = {};
-        return Database.getInstance().collection("resource").get().then( (snapshot: firebase.firestore.QuerySnapshot) => {
-            snapshot.forEach( (document: firebase.firestore.QueryDocumentSnapshot) => {
-                // This undefined check should not be necessary, however typescript cannot see that resourceCache is not undefined
-                if( __resourceCache )
-                    __resourceCache[ document.id ] = new Resource( document.data().name, [] );
+        if( areaSpecifier !== undefined )
+        {
+            // Unfortunatly, Firestore does not nativly support querying by geopoints.
+            // Anything built on top if it to do so is a hack. Like so:
+            let areaCenterPoint = new LatLon.LatLonSpherical(areaSpecifier.latitude, areaSpecifier.longitude);
+            let northmostLatitude = areaCenterPoint.destinationPoint(areaSpecifier.distance, 0).lat;
+            let southmostLatitude = areaCenterPoint.destinationPoint(areaSpecifier.distance, 180).lat;
+            let eastmostLongitude = areaCenterPoint.destinationPoint(areaSpecifier.distance, 90).lon;
+            let westmostLongitude = areaCenterPoint.destinationPoint(areaSpecifier.distance, 270).lon;
+
+            // First get documents within the latitude range.
+            return Database.getInstance().collection("resource")
+                .where("location.latitude", ">=", southmostLatitude)
+                .where("location.latitude", "<=", northmostLatitude)
+                .get().then( (snapshot: firebase.firestore.QuerySnapshot) => {
+                    snapshot.forEach( (document: firebase.firestore.QueryDocumentSnapshot) => {
+                        let documentData = document.data();
+                        // Only cache the documents that are within the longitude range.
+                        // I.e. discard those that are not.
+                        if( documentData["location"]["longitude"] >= westmostLongitude
+                        &&  documentData["location"]["longitude"] <= eastmostLongitude )
+                        {
+                            // This undefined check should not be necessary, however typescript cannot see that resourceCache is defined
+                            if( __resourceCache )
+                            {
+                                __resourceCache[document.id] = new Resource( documentData["name"], documentData["tags"], documentData["details-reference"], documentData["location"]);
+                                // Determine the distance from center point of the area specifier to the resource
+                                let resourceLatLon = new LatLon.LatLonSpherical( documentData["location"]["latitude"], documentData["location"]["longitude"] );
+                                let distance = areaCenterPoint.distanceTo( resourceLatLon );
+                                if(__resourceCache[document.id].location)
+                                    Object.assign(__resourceCache[document.id].location, {"distance": distance});
+                            }
+                        }
+                    });
+                    return __resourceCache;
+                });
+        }
+        else
+        {
+            return Database.getInstance().collection("resource").get().then( (snapshot: firebase.firestore.QuerySnapshot) => {
+                snapshot.forEach( (document: firebase.firestore.QueryDocumentSnapshot) => {
+                    // This undefined check should not be necessary, however typescript cannot see that resourceCache is defined
+                    if( __resourceCache )
+                    {
+                        let documentData = document.data();
+                        __resourceCache[ document.id ] = new Resource( documentData["name"], [], documentData["details-reference"], documentData["location"] );
+                    }
+                });
+                return __resourceCache;
             });
-            return __resourceCache;
-        });
+        }
     }
     else
         return new Promise( (resolve) => resolve(__resourceCache) );
