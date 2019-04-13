@@ -4,10 +4,25 @@ import LatLon from 'geodesy'
 export class Resource
 {
     name: string;
-    location?: object;
     tags: Array<string>;
-    private __details?: firebase.firestore.DocumentData;
-    private __detailsRef: firebase.firestore.DocumentReference;
+    location?: object;
+    detailsRef?: firebase.firestore.DocumentReference;
+    private __details?: object;
+
+    public searilize(): object {
+        let searilization = {};
+        Object.assign( searilization, {
+            "name" : this.name,
+            "tags" : this.tags
+        });
+        if( location !== undefined )
+        {
+            Object.assign(searilization, {
+                "location" : this.location
+            })
+        }
+        return searilization;
+    }
 
     /**
      * @param name The name of the resource
@@ -15,11 +30,11 @@ export class Resource
      *                 Some methods will augment a resources location attribute, adding a distance parameter.
      * @param tags A list of the resources 'tags' used to descrive the goods and/or services this resource offers
      */
-    constructor( name: string, tags: Array<string>, detailsRef: firebase.firestore.DocumentReference, location?: object )
+    constructor( name: string, tags: Array<string>, location: object, detailsRef?: firebase.firestore.DocumentReference )
     {
         this.name = name;
         this.tags = tags;
-        this.__detailsRef = detailsRef;
+        this.detailsRef = detailsRef;
 
         if( !location || location.hasOwnProperty("geopoint") || location.hasOwnProperty("address") )
         {
@@ -29,7 +44,7 @@ export class Resource
         {
             if( location != undefined )
             {
-                // Something has gone wrong. TODO: Handle this error
+                throw new Error("Cannot create a resource with an invalid location. Location object lacks either a geopoint or address property");
             }
         }
     }
@@ -38,17 +53,16 @@ export class Resource
      *  Retrieves details about this resource.
      *  Returns an object with info paragraph, contact info, operating hours, and any other details.
      */
-    public details(): Promise<firebase.firestore.DocumentData | undefined> {
+    public details(): Promise<object | undefined> {
         if( this.__details !== undefined )
         {
             return new Promise( (resolve) => { resolve(this.__details) } );
         }
-        return this.__detailsRef.get().then( (detailsSnapshot: firebase.firestore.DocumentSnapshot) => {
+        if( this.detailsRef === undefined )
+            return new Promise( (resolve) => { resolve(undefined) } );
+
+        return this.detailsRef.get().then( (detailsSnapshot: firebase.firestore.DocumentSnapshot) => {
             this.__details = detailsSnapshot.data();
-            if( this.__details === undefined || this.__details.exists === false )
-            {
-                throw new Error("Details reference was invalid");
-            }
             return this.__details;
         });
     }
@@ -58,6 +72,23 @@ export class Resource
      */
     public clearDetailsCache() {
         this.__details = undefined;
+    }
+
+    /**
+     * Set the details object of this resource. Used for creating new resources
+     * @param details The resource details object
+     */
+    public setDetails( details: object )
+    {
+        // If the details argument lacks a listing-reference property, but the internal object has one, take the internal objects reference
+        if( this.__details != undefined && this.__details.hasOwnProperty("listing-reference") && !details.hasOwnProperty("listing-reference") )
+        {
+            Object.assign(details, {
+                // @ts-ignore
+                "listing-reference": this.__details["listing-reference"]
+            })
+        }
+        this.__details = details;
     }
 }
 
@@ -129,7 +160,7 @@ export function getAllResources( areaSpecifier?: AreaSpecifier ): Promise<Resour
                             // This undefined check should not be necessary, however typescript cannot see that resourceCache is defined
                             if( __resourceCache )
                             {
-                                __resourceCache[document.id] = new Resource( documentData["name"], documentData["tags"], documentData["details-reference"], documentData["location"]);
+                                __resourceCache[document.id] = new Resource( documentData["name"], documentData["tags"], documentData["location"], documentData["details-reference"]);
                                 // Determine the distance from center point of the area specifier to the resource
                                 let resourceLatLon = new LatLon.LatLonSpherical( documentData["location"]["latitude"], documentData["location"]["longitude"] );
                                 let distance = areaCenterPoint.distanceTo( resourceLatLon );
@@ -149,7 +180,7 @@ export function getAllResources( areaSpecifier?: AreaSpecifier ): Promise<Resour
                     if( __resourceCache )
                     {
                         let documentData = document.data();
-                        __resourceCache[ document.id ] = new Resource( documentData["name"], [], documentData["details-reference"], documentData["location"] );
+                        __resourceCache[ document.id ] = new Resource( documentData["name"], documentData["tags"], documentData["location"], documentData["details-reference"] );
                     }
                 });
                 return __resourceCache;
@@ -185,8 +216,67 @@ export function getResourceByID( id: string ) : Promise<Resource>
                 }
                 else
                 {
-                    resolve( new Resource( documentData["name"], [], documentData["details-reference"], documentData["location"] ) );
+                    resolve( new Resource( documentData["name"], [], documentData["location"], documentData["details-reference"] ) );
                 }
             });
         });
+}
+
+/**
+ * Uploads a resource to the database. If the resource already exists, it is overwritten.
+ * @param resource the resource object to upload. 
+ * @param documentID the ID of the document in the firebase "resource" collection
+ */
+export function submitResource( resource: Resource, documentID?: string ): Promise<void>
+{  
+    return resource.details().then( (details) => {
+        if( documentID === undefined )
+        {
+            if( details !== undefined && details.hasOwnProperty("listing-reference") )
+            {
+                // Typescript won't let me do what I want here. Not a lot of patience with the type checker today
+                // @ts-ignore
+                documentID = details["listing-reference"].id;
+            }
+            else
+            {
+                documentID = Database.getInstance().collection("resource").doc().id;
+            }
+        }
+        // Upload details document
+        // Make the details document point to the listing document
+        if( details === undefined )
+        {
+            details = {};
+        }
+
+        Object.assign(details, { 
+            "listing-reference" : Database.getInstance().collection("resource").doc(documentID)
+        });
+
+        resource.setDetails( details );
+
+        // To appease type checker
+        let detailsRef: firebase.firestore.DocumentReference;
+        if( resource.detailsRef === undefined )
+        {
+            detailsRef = Database.getInstance().collection("resource-details").doc();
+            resource.detailsRef = detailsRef;
+        }
+        else
+        {
+            detailsRef = resource.detailsRef;
+        }
+
+        return resource.detailsRef.set(details).then( () => {
+            return detailsRef;
+        });
+    }).then( (documentReference : firebase.firestore.DocumentReference) => {
+        // Upload listing document
+        let searilization = resource.searilize();
+        Object.assign( searilization, {
+            "details-reference": documentReference
+        });
+        return Database.getInstance().collection("resource").doc(documentID).set( searilization );
+    });
 }
