@@ -280,3 +280,19 @@ export function submitResource( resource: Resource, documentID?: string ): Promi
         return Database.getInstance().collection("resource").doc(documentID).set( searilization );
     });
 }
+
+/** 
+ * Delete a resource and it's details listing from the backend by its ID
+ * @param id the resource's ID
+ */
+export function deleteResourceByID( id: string ): Promise<void>{
+    let documentRef = Database.getInstance().collection("resource").doc(id);
+    return documentRef.get().then( (snap: firebase.firestore.DocumentSnapshot) => {
+        // Delete the details reference
+        let detailsRef = snap.get("details-reference") as firebase.firestore.DocumentReference;
+        return detailsRef.delete();
+    }).then( () => {
+        // Delete the original document
+        return documentRef.delete();
+    });
+}
