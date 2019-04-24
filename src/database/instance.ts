@@ -12,10 +12,12 @@ export const Database = (function(){
         messagingSenderId: "126845761108"
     };
 
+    // Ensure that the app is initilized before any database members become visible
+    firebase.initializeApp( FIREBASE_CONFIG );
+
     let instance: firebase.firestore.Firestore;
     function createInstance()
     {
-        firebase.initializeApp( FIREBASE_CONFIG );
         instance = firebase.firestore();
     }
 
