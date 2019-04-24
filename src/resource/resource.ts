@@ -1,5 +1,10 @@
 import { Database } from '../database/instance';
 import LatLon from 'geodesy'
+import algoliasearch from 'algoliasearch'
+
+// Search API by Algolia
+const algoliaClient = algoliasearch("ZNAVVMB14R", "fb6bae007584585719e79b195fc57ab2");
+const algoliaResourceIndex = algoliaClient.initIndex("name");
 
 export class Resource
 {
@@ -126,9 +131,9 @@ export class AreaSpecifier {
 /**
  * Gets all the resources in the database without loading their details
  * Will download and cache the resources.
- * @param areaSpecifier A specifier for the location in which to find resources. If specified, each resource will have a distance property assigned to it's location object.
  * Note: The cache of resources will be specific to the areaSpecifier (or lackthereof)
- * If you wish to retrieve resources for a new area, the cache must be cleared with @function clearResourceCache
+ * If you wish to retrieve resources for a new area, the cache must be cleared with clearResourceCache
+ * @param areaSpecifier A specifier for the location in which to find resources. If specified, each resource will have a distance property assigned to it's location object.
  * @returns A promise to a resource list
  */
 export function getAllResources( areaSpecifier?: AreaSpecifier ): Promise<ResourceList> {
@@ -294,5 +299,22 @@ export function deleteResourceByID( id: string ): Promise<void>{
     }).then( () => {
         // Delete the original document
         return documentRef.delete();
+    });
+}
+
+// Search for a resource by text using algolia search.
+// This text search will match any part of a resource's listing
+// not just the name.
+export function searchForResource( query: string ): Promise<ResourceList> {
+    return algoliaResourceIndex.search(query).then( (content) => {
+        let list: ResourceList = {};
+        content.hits.forEach( (hit) => {
+            let detailsRef = Database.getInstance().doc(hit["details-reference"]._path.segments.join('/'));
+            // The typescript compiler cant see that 'list'
+            // is guaranteed to be defined.
+            // @ts-ignore
+            list[hit.objectID] = new Resource(hit["name"], hit["tags"], hit["location"], detailsRef );
+        });
+        return list;
     });
 }
