@@ -6,6 +6,44 @@ import algoliasearch from 'algoliasearch'
 const algoliaClient = algoliasearch("ZNAVVMB14R", "fb6bae007584585719e79b195fc57ab2");
 const algoliaResourceIndex = algoliaClient.initIndex("name");
 
+// Types
+type ResourceList = {
+    [documentID: string]: Resource;
+} | undefined;
+
+// Type to represent queries done on resource lists
+export type ResourceQuery = {
+    text?: string;
+    area?: AreaSpecifier;
+    tags?: [string];
+}
+
+// Classes
+
+// Type to define an area to search within
+export class AreaSpecifier {
+    latitude: number;
+    longitude: number;
+    distance: number;
+    /**
+     * @param latitude the horizontal center line of the area
+     * @param longitude the vertical cetner line of the area
+     * @param distance A maximum distance from the point implied by latitude and longitude in METERS. 
+     *                 Not Metres you colonizers! 
+     */
+    constructor( latitude: number, longitude: number, distance: number )
+    {
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.distance = distance;
+    }
+
+    static fromGeopoint( location: firebase.firestore.GeoPoint, distance: number )
+    {
+        return new this( location.latitude, location.longitude, distance );
+    }
+}
+
 export class Resource
 {
     name: string;
@@ -95,114 +133,136 @@ export class Resource
         }
         this.__details = details;
     }
-}
 
-
-type ResourceList = {
-    [documentID: string]: Resource;
-} | undefined;
-
-let __resourceCache: ResourceList = undefined;
-
-// Type to define an area to search within
-export class AreaSpecifier {
-    latitude: number;
-    longitude: number;
-    distance: number;
-    /**
-     * @param latitude the horizontal center line of the area
-     * @param longitude the vertical cetner line of the area
-     * @param distance A maximum distance from the point implied by latitude and longitude in METERS. 
-     *                 Not Metres you colonizers! 
-     */
-    constructor( latitude: number, longitude: number, distance: number )
-    {
-        this.latitude = latitude;
-        this.longitude = longitude;
-        this.distance = distance;
-    }
-
-    static fromGeopoint( location: firebase.firestore.GeoPoint, distance: number )
-    {
-        return new this( location.latitude, location.longitude, distance );
-    }
-}
-
-/**
- * Gets all the resources in the database without loading their details
- * Will download and cache the resources.
- * Note: The cache of resources will be specific to the areaSpecifier (or lackthereof)
- * If you wish to retrieve resources for a new area, the cache must be cleared with clearResourceCache
- * @param areaSpecifier A specifier for the location in which to find resources. If specified, each resource will have a distance property assigned to it's location object.
- * @returns A promise to a resource list
- */
-export function getAllResources( areaSpecifier?: AreaSpecifier ): Promise<ResourceList> {
-    if( __resourceCache === undefined )
-    {
-        __resourceCache = {};
-        if( areaSpecifier !== undefined )
+    public isWithin( areaSpecifier: AreaSpecifier ): boolean {
+        if( !location || !location.hasOwnProperty("latitude") || !location.hasOwnProperty("longitude")  )
         {
-            // Unfortunatly, Firestore does not nativly support querying by geopoints.
-            // Anything built on top if it to do so is a hack. Like so:
-            let areaCenterPoint = new LatLon.LatLonSpherical(areaSpecifier.latitude, areaSpecifier.longitude);
-            let northmostLatitude = areaCenterPoint.destinationPoint(areaSpecifier.distance, 0).lat;
-            let southmostLatitude = areaCenterPoint.destinationPoint(areaSpecifier.distance, 180).lat;
-            let eastmostLongitude = areaCenterPoint.destinationPoint(areaSpecifier.distance, 90).lon;
-            let westmostLongitude = areaCenterPoint.destinationPoint(areaSpecifier.distance, 270).lon;
-
-            // First get documents within the latitude range.
-            return Database.getInstance().collection("resource")
-                .where("location.latitude", ">=", southmostLatitude)
-                .where("location.latitude", "<=", northmostLatitude)
-                .get().then( (snapshot: firebase.firestore.QuerySnapshot) => {
-                    snapshot.forEach( (document: firebase.firestore.QueryDocumentSnapshot) => {
-                        let documentData = document.data();
-                        // Only cache the documents that are within the longitude range.
-                        // I.e. discard those that are not.
-                        if( documentData["location"]["longitude"] >= westmostLongitude
-                        &&  documentData["location"]["longitude"] <= eastmostLongitude )
-                        {
-                            // This undefined check should not be necessary, however typescript cannot see that resourceCache is defined
-                            if( __resourceCache )
-                            {
-                                __resourceCache[document.id] = new Resource( documentData["name"], documentData["tags"], documentData["location"], documentData["details-reference"]);
-                                // Determine the distance from center point of the area specifier to the resource
-                                let resourceLatLon = new LatLon.LatLonSpherical( documentData["location"]["latitude"], documentData["location"]["longitude"] );
-                                let distance = areaCenterPoint.distanceTo( resourceLatLon );
-                                if(__resourceCache[document.id].location)
-                                    Object.assign(__resourceCache[document.id].location, {"distance": distance});
-                            }
-                        }
-                    });
-                    return __resourceCache;
-                });
+            throw "Resource is missing lat/lon!";
         }
-        else
-        {
-            return Database.getInstance().collection("resource").get().then( (snapshot: firebase.firestore.QuerySnapshot) => {
+
+        let areaCenterPoint = new LatLon.LatLonSpherical(areaSpecifier.latitude, areaSpecifier.longitude);
+        // I should probably have a type for location info.
+        // @ts-ignore
+        let resourceLocation = new LatLon.LatLonSpherical(location["latitude"], location["longitude"]);
+        return areaSpecifier.distance <= areaCenterPoint.distanceTo( resourceLocation );
+    }
+}
+
+// Methods
+/**
+ * Get resources by any or none of the following: text search, area limiting, and tag filtering.
+ * 
+ * Searching by Tags: Tags are sensitive at the moment. Meaning that tag strings must exactly match
+ * the database, else the get method will not retireve them.
+ * Searching by Text: Will search all listing information of a resource. Including name, location, and tags.
+ * Searching by Location: Will filter results using an AreaSpecifier. I.e. a location and a maximum distance
+ * @param query optional argument. If provided, should follow the type specified by ResourceQuery.
+ */
+export function get( query: ResourceQuery ): Promise<ResourceList> {
+    if( query == undefined )
+    {
+        query = {};
+    }
+    // Get resources by any combonation or none of the following
+    // Get resources by text
+    // Get resources by locaton
+    // Get resources by tags
+    
+    // If we wish to do a text search, this must be done through algolia
+    if( query.text != undefined )
+    {
+        return algoliaResourceIndex.search(query.text).then( (content) => {
+            let list: ResourceList = {};
+            content.hits.forEach( (hit) => {
+                let detailsRef = Database.getInstance().doc(hit["details-reference"]._path.segments.join('/'));
+                let resource = new Resource(hit["name"], hit["tags"], hit["location"], detailsRef );
+                // Apply other filters as specified by the query
+                if( query.tags != undefined )
+                {
+                    if( !query.tags.every( queryTag => resource.tags.includes(queryTag) ) )
+                        return; // "continue"
+                }
+
+                if( query.area != undefined )
+                {
+                    if( !resource.isWithin( query.area ) )
+                        return; // "continue"
+                }
+
+                // The typescript compiler cant see that 'list'
+                // is guaranteed to be defined.
+                // @ts-ignore
+                list[hit.objectID] = resource;
+            });
+            return list;
+        });
+    }
+    else if( query.area != undefined )
+    {
+        let areaCenterPoint = new LatLon.LatLonSpherical(query.area.latitude, query.area.longitude);
+        let northmostLatitude = areaCenterPoint.destinationPoint(query.area.distance, 0).lat;
+        let southmostLatitude = areaCenterPoint.destinationPoint(query.area.distance, 180).lat;
+        let eastmostLongitude = areaCenterPoint.destinationPoint(query.area.distance, 90).lon;
+        let westmostLongitude = areaCenterPoint.destinationPoint(query.area.distance, 270).lon;
+
+        // First get documents within the latitude range.
+        return Database.getInstance().collection("resource")
+            .where("location.latitude", ">=", southmostLatitude)
+            .where("location.latitude", "<=", northmostLatitude)
+            .get().then( (snapshot: firebase.firestore.QuerySnapshot) => {
+                let list: ResourceList = {};
                 snapshot.forEach( (document: firebase.firestore.QueryDocumentSnapshot) => {
-                    // This undefined check should not be necessary, however typescript cannot see that resourceCache is defined
-                    if( __resourceCache )
+                    let documentData = document.data();
+                    // Only cache the documents that are within the longitude range.
+                    // I.e. discard those that are not.
+                    if( documentData["location"]["longitude"] >= westmostLongitude
+                    &&  documentData["location"]["longitude"] <= eastmostLongitude )
                     {
-                        let documentData = document.data();
-                        __resourceCache[ document.id ] = new Resource( documentData["name"], documentData["tags"], documentData["location"], documentData["details-reference"] );
+                        // This undefined check should not be necessary, however typescript cannot see that resourceCache is defined
+                        if( list )
+                        {
+                            let resource = new Resource( documentData["name"], documentData["tags"], documentData["location"], documentData["details-reference"]);
+                            // Typescript cant see that I just assigned list[document.id]. ugh.
+                            // @ts-ignore
+                            if( query.tags && !query.tags.every( tag => list[document.id].tags.includes(tag) ) )
+                            {
+                                return; // "continue"
+                            }
+                            list[document.id] = resource;
+                            // Determine the distance from center point of the area specifier to the resource
+                            let resourceLatLon = new LatLon.LatLonSpherical( documentData["location"]["latitude"], documentData["location"]["longitude"] );
+                            let distance = areaCenterPoint.distanceTo( resourceLatLon );
+                            if(list[document.id].location)
+                                Object.assign(list[document.id].location, {"distance": distance});
+                        }
                     }
                 });
-                return __resourceCache;
+                return list;
             });
-        }
-    }
+    } 
     else
-        return new Promise( (resolve) => resolve(__resourceCache) );
+    {
+        return Database.getInstance().collection("resource").get().then( (snapshot: firebase.firestore.QuerySnapshot) => {
+            let list: ResourceList = {};
+            snapshot.forEach( (document: firebase.firestore.QueryDocumentSnapshot) => {
+                // This undefined check should not be necessary, however typescript cannot see that resourceCache is defined
+                if( list )
+                {
+                    let documentData = document.data();
+                    let resource = new Resource( documentData["name"], documentData["tags"], documentData["location"], documentData["details-reference"] );
+                    if( query.tags && !query.tags.every( tag => resource.tags.includes(tag) ) )
+                    {
+                        return; // "continue"
+                    }
+                    list[document.id] = resource;
+                }
+            });
+            return list;
+        });
+    }
 }
 
-
-/**
- *  Clears the resource cache. Calling getAllResources after this will ensure that fresh data is downloaded
- */
-export function clearResourceCache() {
-    __resourceCache = undefined;
-}
+// The front end should only need the "get" method. The following are for more extensive operations.
 
 /**
  * Retrieves a resource by its document id in firestore.
@@ -229,6 +289,7 @@ export function getResourceByID( id: string ) : Promise<Resource>
 
 /**
  * Uploads a resource to the database. If the resource already exists, it is overwritten.
+ * Requires authentication. See the Auth module.
  * @param resource the resource object to upload. 
  * @param documentID the ID of the document in the firebase "resource" collection
  */
@@ -288,33 +349,23 @@ export function submitResource( resource: Resource, documentID?: string ): Promi
 
 /** 
  * Delete a resource and it's details listing from the backend by its ID
+ * Requires authentication. See the Auth module.
  * @param id the resource's ID
  */
 export function deleteResourceByID( id: string ): Promise<void>{
     let documentRef = Database.getInstance().collection("resource").doc(id);
     return documentRef.get().then( (snap: firebase.firestore.DocumentSnapshot) => {
         // Delete the details reference
+        if( !snap )
+        {
+            return new Promise((resolve, reject) => {
+                reject("Specified resource does not exist.");
+            });
+        }
         let detailsRef = snap.get("details-reference") as firebase.firestore.DocumentReference;
         return detailsRef.delete();
     }).then( () => {
         // Delete the original document
         return documentRef.delete();
-    });
-}
-
-// Search for a resource by text using algolia search.
-// This text search will match any part of a resource's listing
-// not just the name.
-export function searchForResource( query: string ): Promise<ResourceList> {
-    return algoliaResourceIndex.search(query).then( (content) => {
-        let list: ResourceList = {};
-        content.hits.forEach( (hit) => {
-            let detailsRef = Database.getInstance().doc(hit["details-reference"]._path.segments.join('/'));
-            // The typescript compiler cant see that 'list'
-            // is guaranteed to be defined.
-            // @ts-ignore
-            list[hit.objectID] = new Resource(hit["name"], hit["tags"], hit["location"], detailsRef );
-        });
-        return list;
     });
 }
