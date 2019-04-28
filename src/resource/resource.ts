@@ -12,7 +12,7 @@ type ResourceList = {
 } | undefined;
 
 // Type to represent queries done on resource lists
-export type ResourceQuery = {
+type ResourceQuery = {
     text?: string;
     area?: AreaSpecifier;
     tags?: [string];
