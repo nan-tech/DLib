@@ -302,21 +302,19 @@ export function getResourceByID( id: string ) : Promise<Resource>
  * @param resource the resource object to upload. 
  * @param documentID the ID of the document in the firebase "resource" collection
  */
-export function submitResource( resource: Resource, documentID?: string ): Promise<void>
+export function submitResource( resource: Resource ): Promise<void>
 {  
+    let documentID: string;
     return resource.details().then( (details) => {
-        if( documentID === undefined )
+        if( details !== undefined && details.hasOwnProperty("listing-reference") )
         {
-            if( details !== undefined && details.hasOwnProperty("listing-reference") )
-            {
-                // Typescript won't let me do what I want here. Not a lot of patience with the type checker today
-                // @ts-ignore
-                documentID = details["listing-reference"].id;
-            }
-            else
-            {
-                documentID = Database.getInstance().collection("resource").doc().id;
-            }
+            // Typescript won't let me do what I want here. Not a lot of patience with the type checker today
+            // @ts-ignore
+            documentID = details["listing-reference"].id;
+        }
+        else
+        {
+            documentID = Database.getInstance().collection("resource").doc().id;
         }
         // Upload details document
         // Make the details document point to the listing document
