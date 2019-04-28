@@ -178,13 +178,13 @@ Disance is the maximum allowed distance in meters.
 `static DLib.AreaSpecifier.fromGeopoint( location: firebase.firestore.GeoPoint, distance: number )`
 Constructs an area specifier using a firestore GeoPoint object as opposed to a lat/lon.
 
-### Class: `Resource`
+### Class: `DLib.Resources.Resource`
 This class represents a resource and all its associated fields.
 
 #### Data members
-`DLib.Resource.Resource.name: string` The name of the resource
-`DLib.Resource.Resource.tags: Array<string>` The tags associated with this resource
-`DLib.Resource.Resource.location?: object` The location object. Can take the following form:
+`DLib.Resources.Resource.name: string` The name of the resource
+`DLib.Resources.Resource.tags: Array<string>` The tags associated with this resource
+`DLib.Resources.Resource.location?: object` The location object. Can take the following form:
 ```
 location = { 
     latitude: 124.2415,
@@ -195,41 +195,36 @@ location = {
     zip_code: "95616"
 }
 ```
-`DLib.Resource.Resource.detailsRef?: firebase.firestore.DocumentReference` A reference to a document which contains further information about this resource. 
+`DLib.Resources.Resource.detailsRef?: firebase.firestore.DocumentReference` A reference to a document which contains further information about this resource. 
 Note: accessing the document via this reference is not recomended. See instead `DLib.Resources.details()`
-
-### Functions
-`new DLib.Resource.Resource( name: string, tags: Array<string>, location: object, detailsRef?: firebase.firestore.DocumentReference )`
-Construct a new resource with the specified information. The doucment reference field should be left blank when manually constructing a new resource. 
-If you are trying to retireve an existing resource, see the other functions defined in this module.
-
-`DLib.Resource.Resource.searilize()` Converts a resource into a JSON object. Used internally in the resource submission process.
-
-`DL`
-
-
-
-.details()`
-
-### Functions
-`new DLib.Resource.Resource( name: string, tags: Array<string>, location: object, detailsRef?: firebase.firestore.DocumentReference )`
-Construct a new resource with the specified information. The doucment reference field should be left blank when manually constructing a new resource. 
-If you are trying to retireve an existing resource, see the other functions defined in this module.
-
-`DLib.Resource.Resource.searilize()` Converts a resource into a JSON object. Used internally in the resource submission process.
-
-`DL`
-
-
-
-.details()`
 
 ### Functions
 `new DLib.Resources.Resource( name: string, tags: Array<string>, location: object, detailsRef?: firebase.firestore.DocumentReference )`
 Construct a new resource with the specified information. The doucment reference field should be left blank when manually constructing a new resource. 
 If you are trying to retireve an existing resource, see the other functions defined in this module.
 
-`DLib.Resources.Resource.searilize()` Converts a resource into a JSON object. Used internally in the resource submission process.
+`DLib.Resources.Resource.searilize(): object` Converts a resource into a JSON object. Used internally in the resource submission process.
+
+`DLib.Resources.Resource.details(): Promise<object>` Retrieves the details of a resource in promise form.
+Code example:
+```
+resource.details().then( (detailsObject) => {
+    console.log("We have the details of the resource.");
+}).catch( () => {
+    console.log("We couldnt get the details of the resource.");
+});
+```
+The details object is retrieved from the database and cashed in the resource object. Following calls to details() will not retrieve data from the database.
+
+`DLib.Resources.Resource.clearDetailsCache()`
+Clears the details object cashed in the resource object.
+
+`DLib.Resources.setDetails( details: object )`
+Set the details object of a resource. When constructing a new resource to upload, this function should be used to assign the details of a resource.
+
+`DLib.Resources.isWithin( areaSpecifier: AreaSpecifier ): boolean`
+Returns true if the resource is within the specified area. Will throw an error if the resource does not contain the required location information.
+
 
 
 
