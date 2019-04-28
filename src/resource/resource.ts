@@ -96,7 +96,7 @@ export class Resource
      *  Retrieves details about this resource.
      *  Returns an object with info paragraph, contact info, operating hours, and any other details.
      */
-    public details(): Promise<object | undefined> {
+    public details(): Promise<object> {
         if( this.__details !== undefined )
         {
             return new Promise( (resolve) => { resolve(this.__details) } );
@@ -105,8 +105,17 @@ export class Resource
             return new Promise( (resolve) => { resolve(undefined) } );
 
         return this.detailsRef.get().then( (detailsSnapshot: firebase.firestore.DocumentSnapshot) => {
-            this.__details = detailsSnapshot.data();
-            return this.__details;
+            return new Promise( (resolve, reject) => {
+                if( detailsSnapshot == undefined )
+                {
+                    reject("Could not retrieve details document.");
+                }
+                else
+                {
+                    this.__details = detailsSnapshot.data();
+                    return this.__details;
+                }
+            });
         });
     }
 
