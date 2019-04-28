@@ -198,7 +198,7 @@ location = {
 `DLib.Resources.Resource.detailsRef?: firebase.firestore.DocumentReference` A reference to a document which contains further information about this resource. 
 Note: accessing the document via this reference is not recomended. See instead `DLib.Resources.details()`
 
-### Functions
+#### Functions
 `new DLib.Resources.Resource( name: string, tags: Array<string>, location: object, detailsRef?: firebase.firestore.DocumentReference )`
 Construct a new resource with the specified information. The doucment reference field should be left blank when manually constructing a new resource. 
 If you are trying to retireve an existing resource, see the other functions defined in this module.
@@ -225,7 +225,41 @@ Set the details object of a resource. When constructing a new resource to upload
 `DLib.Resources.isWithin( areaSpecifier: AreaSpecifier ): boolean`
 Returns true if the resource is within the specified area. Will throw an error if the resource does not contain the required location information.
 
+## Resources module functions
+`DLib.Resources.get( query: ResourceQuery ): Promise<ResourceList>` Get resources by any or none of the following: text search, area limiting, and tag filtering.
 
+Searching by Tags: Tags are sensitive at the moment. Meaning that tag strings must exactly match the database, else the get method will not retireve them.
+Searching by Text: Will search all listing information of a resource. Including name, location, and tags.
+Searching by Location: Will filter results using an AreaSpecifier. I.e. a location and a maximum distance
 
+The query object can take the following form:
+Note the query object itself, and all of it's properties are optional.
+```
+query = {
+    text: "Goodwill Renton",
+    tags: ["clothing"],
+    location: new DLib.Resources.AreaSpecifier( lat, lon, distance )
+}
+```
 
+`get` returns a list of resource objects indexed by their automatically assigned ID in the firestore database. E.g. list\["dWzE9R80eIKTc9Zi2lbp"\].
 
+Code Example:
+```
+DLib.Resources.get( {text: "Soup"} ).then( (list) => {
+    list.forEach( (resource) => {
+        console.log( resource.name );
+    });
+}).catch( () => {
+    console.log("Oh noez! Sometwing went wrongzies :3");
+});
+```
+
+`DLib.Resources.getResourceByID( id: string ): Promise<Resource>` Retrieves a resource from the database by its ID.
+
+`DLib.Resources.submitResource( resource: Resource ): Promise<void>` Uploads a resource to the database. If the resource already exists, it is overwritten. This method requires authentication. 
+For the purpose of uploading new resources, this method should be used alongside `new DLib.Resources.Resource` and `DLib.Resources.Resource.setDetails`
+The promise will be rejected if the resource could not be uploaded.
+
+`DLib.Resources.deleteResourceByID( id: string ): Promise<Resource>` Delete a resource and it's details listing from the backend by its ID. This method requires authentication.
+The promise will be rejected if the resource could not be deleted.
