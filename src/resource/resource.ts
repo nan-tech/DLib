@@ -1,6 +1,7 @@
 import { Database } from '../database/instance';
 import LatLon from 'geodesy'
 import algoliasearch from 'algoliasearch'
+import { resolve } from 'dns';
 
 // Search API by Algolia
 const algoliaClient = algoliasearch("ZNAVVMB14R", "fb6bae007584585719e79b195fc57ab2");
@@ -365,7 +366,7 @@ export function deleteResourceByID( id: string ): Promise<void>{
         // Delete the details reference
         if( !snap )
         {
-            return new Promise((resolve, reject) => {
+            return new Promise<void>((resolve, reject) => {
                 reject("Specified resource does not exist.");
             });
         }
