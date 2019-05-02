@@ -7,9 +7,9 @@
     "type-check:watch": "npm run type-check -- --watch",
     "build": "npm run build:types && npm run build:js && npm run build:browserify && npm run build:minify",
     "build:types": "npx tsc --emitDeclarationOnly",
-    "build:js": "babel src --out-dir lib --extensions \".ts,.tsx\" --source-maps inline",
-    "build:browserify": "browserify lib/library/lib.js -o lib/dist.js",
-    "build:minify": "./node_modules/uglify-js/bin/uglifyjs lib/dist.js -o lib/dist.min.js"
+    "build:js": "npx babel src --out-dir lib --extensions \".ts,.tsx\" --source-maps inline",
+    "build:browserify": "npx browserify lib/library/lib.js -o lib/dist.js",
+    "build:minify": "npx uglifyjs lib/dist.js -o lib/dist.min.js"
   },
   "repository": {
     "type": "git",
