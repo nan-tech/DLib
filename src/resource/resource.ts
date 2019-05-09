@@ -114,7 +114,7 @@ export class Resource
                 else
                 {
                     this.__details = detailsSnapshot.data();
-                    return this.__details;
+                    resolve(this.__details);
                 }
             });
         });
