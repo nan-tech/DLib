@@ -238,7 +238,7 @@ Note the query object itself, and all of it's properties are optional.
 query = {
     text: "Goodwill Renton",
     tags: ["clothing"],
-    location: new DLib.Resources.AreaSpecifier( lat, lon, distance )
+    area: new DLib.Resources.AreaSpecifier( lat, lon, distance )
 }
 ```
 
